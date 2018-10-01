@@ -25,7 +25,7 @@ func getDoc(err error, resp *http.Response) *html.Node {
 	return doc
 }
 
-func visit(links map[string]string, node *html.Node, nodeStart, attrKey string) map[string]string {
+func visit(links map[string]string, node *html.Node, nodeStart, attrKey string) {
 	if node.Type == html.ElementNode && node.Data == nodeStart {
 		for _, a := range node.Attr {
 			if a.Key == attrKey {
@@ -35,14 +35,13 @@ func visit(links map[string]string, node *html.Node, nodeStart, attrKey string) 
 	}
 
 	for c := node.FirstChild; c != nil; c = c.NextSibling {
-		links = visit(links, c, nodeStart, attrKey)
+		visit(links, c, nodeStart, attrKey)
 	}
-	return links
 }
 
 func getLinksMap(doc *html.Node, nodeStart, attrKey string) map[string]string {
 	links := make(map[string]string)
-	links = visit(links, doc, nodeStart, attrKey)
+	visit(links, doc, nodeStart, attrKey)
 	return links
 }
 
