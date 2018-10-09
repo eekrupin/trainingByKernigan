@@ -1,24 +1,16 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/pkg/errors"
+	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"sync/atomic"
 	"time"
 )
-
-type passportControl struct {
-	personal sex
-}
-
-type country string
-
-type ticket struct {
-	departure,
-	arrival country
-}
-
-type sex int
-
-type animalDocType int
 
 const (
 	male   sex = 1
@@ -29,9 +21,18 @@ const (
 	animalOSafetyСertificate animalDocType = 3
 )
 
-func (p *passport) isAdult() bool {
-	return p.birthday.AddDate(16, 0, 0).Before(time.Now())
+var db_ext_reg map[int]map[string]interface{}
+var codeCounter int32
+
+func init() {
+	db_ext_reg = make(map[int]map[string]interface{})
 }
+
+type passportControl struct {
+	personal sex
+}
+
+type country string
 
 type passport struct {
 	lastName,
@@ -40,6 +41,24 @@ type passport struct {
 	sex      sex
 	birthday time.Time
 	country  string
+}
+
+type ticket struct {
+	departure,
+	arrival country
+}
+
+type extData struct {
+	ticket
+	passport
+}
+
+type sex int
+
+type animalDocType int
+
+func (p *passport) isAdult() bool {
+	return p.birthday.AddDate(16, 0, 0).Before(time.Now())
 }
 
 type animalDoc interface {
@@ -110,8 +129,24 @@ func (pc *passportControl) checkWithoutCheckArabian(t *ticket, p *passport, anim
 }
 
 func getPersonalDataByCode(code int) (*ticket, *passport, error) {
-	//кря... кря... обратился к DB
-	return &ticket{departure: "Moscow", arrival: "Moscow"}, &passport{firstNAme: "user"}, nil
+	mapData, ok := db_ext_reg[code]
+	if !ok {
+		return nil, nil, errors.New("No data")
+	}
+	return mapData["ticket"].(*ticket), mapData["passport"].(*passport), nil
+}
+
+func setPersonalData(ticket *ticket, passport *passport) (code int) {
+	if ticket == nil || passport == nil {
+		return 0
+	}
+
+	code = int(atomic.AddInt32(&codeCounter, 1))
+	data := make(map[string]interface{})
+	data["ticket"] = ticket
+	data["passport"] = passport
+	db_ext_reg[code] = data
+	return
 }
 
 func (pc *passportControl) AutoCheck(code int) (bool, error) {
@@ -128,6 +163,59 @@ func (pc *passportControl) AutoCheck(code int) (bool, error) {
 	return pc.Check(t, p, nil)
 }
 
+func handler(w http.ResponseWriter, r *http.Request) {
+	var extData extData
+
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+	if err != nil {
+		fmt.Fprintf(w, "Error: %v", err)
+		return
+	}
+	if err := r.Body.Close(); err != nil {
+		fmt.Fprintf(w, "Error: %v", err)
+		return
+	}
+	if err := json.Unmarshal(body, &extData); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(422) // unprocessable entity
+		if err := json.NewEncoder(w).Encode(err); err != nil {
+			panic(err)
+		}
+		return
+	}
+
+	code := setPersonalData(&extData.ticket, &extData.passport)
+
+	fmt.Fprintf(w, "Your code registration is: %d", code)
+}
+
 func main() {
+	http.HandleFunc("/reg", handler)
+	//log.Fatal(http.ListenAndServe(":8080", nil))
+	go http.ListenAndServe(":8080", nil)
+	//time.Sleep(time.Second*5)
+	//fmt.Println("dd")
+
+	var res bool
+	var err error
+
+	pc_babka := passportControl{personal: female}
+
+	man_t := ticket{departure: "Moscow", arrival: "Iraq"}
+	man_p := passport{firstNAme: "Игорь", birthday: time.Date(1990, 3, 15, 0, 0, 0, 0, time.UTC), sex: male, lastName: "Столов", serialNumber: "ER456853", country: "Russia"}
+	res, err = pc_babka.Check(&man_t, &man_p, nil)
+	log.Printf("Result: %b, error: %s", res, err)
+
+	girl_t := ticket{departure: "Moscow", arrival: "Iraq"}
+	girl_p := passport{firstNAme: "Анна", birthday: time.Date(1990, 3, 15, 0, 0, 0, 0, time.UTC), sex: female, lastName: "Столова", serialNumber: "ER456853", country: "Russia"}
+	res, err = pc_babka.Check(&girl_t, &girl_p, nil)
+	log.Printf("Result: %b, error: %s", res, err)
+
+	res, err = pc_babka.CheckLadyToArabian(&girl_t, &girl_p, true, nil)
+	log.Printf("Result: %b, error: %s", res, err)
+
+	sec := time.Duration(100)
+	log.Printf("You have %d sec to test API: http://localhost:8080/reg", sec)
+	time.Sleep(time.Second * sec)
 
 }
