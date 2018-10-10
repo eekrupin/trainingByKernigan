@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
@@ -18,7 +19,7 @@ const (
 
 	animalveterinaryPassport animalDocType = 1
 	animalOwnershipAct       animalDocType = 2
-	animalOSafetyСertificate animalDocType = 3
+	animalSafetyСertificate  animalDocType = 3
 )
 
 var db_ext_reg map[int]map[string]interface{}
@@ -35,22 +36,22 @@ type passportControl struct {
 type country string
 
 type passport struct {
-	lastName,
-	firstNAme,
-	serialNumber string
-	sex      sex
-	birthday time.Time
-	country  string
+	LastName,
+	FirstNAme,
+	SerialNumber string
+	Sex      sex
+	Birthday time.Time
+	Country  string
 }
 
 type ticket struct {
-	departure,
-	arrival country
+	Departure country `json:"Departure"`
+	Arrival   country `json:"Arrival"`
 }
 
 type extData struct {
-	ticket
-	passport
+	ticket   `json:"ticket"`
+	passport `json:"passport"`
 }
 
 type sex int
@@ -58,7 +59,7 @@ type sex int
 type animalDocType int
 
 func (p *passport) isAdult() bool {
-	return p.birthday.AddDate(16, 0, 0).Before(time.Now())
+	return p.Birthday.AddDate(16, 0, 0).Before(time.Now())
 }
 
 type animalDoc interface {
@@ -66,6 +67,29 @@ type animalDoc interface {
 	getAge() int
 	getName() string
 	isSafety() bool
+}
+
+type animalDocImpl struct {
+	docType animalDocType
+	age     int
+	name    string
+	safety  bool
+}
+
+func (d *animalDocImpl) getDocType() animalDocType {
+	return d.docType
+}
+
+func (d *animalDocImpl) getAge() int {
+	return d.age
+}
+
+func (d *animalDocImpl) getName() string {
+	return d.name
+}
+
+func (d *animalDocImpl) isSafety() bool {
+	return d.safety
 }
 
 func (country country) isArabian() bool {
@@ -101,14 +125,14 @@ func getArabianCountry() map[country]bool {
 }
 
 func (pc *passportControl) Check(t *ticket, p *passport, animalDoc animalDoc) (bool, error) {
-	if p.sex == female && p.isAdult() && t.arrival.isArabian() {
+	if p.Sex == female && p.isAdult() && t.Arrival.isArabian() {
 		return false, errors.New("Use check lady to Arabian")
 	}
 	return pc.checkWithoutCheckArabian(t, p, animalDoc)
 }
 
 func (pc *passportControl) CheckLadyToArabian(t *ticket, p *passport, unmarried bool, animalDoc animalDoc) (bool, error) {
-	if !unmarried {
+	if unmarried {
 		return false, nil
 	}
 	return pc.checkWithoutCheckArabian(t, p, animalDoc)
@@ -193,29 +217,44 @@ func main() {
 	http.HandleFunc("/reg", handler)
 	//log.Fatal(http.ListenAndServe(":8080", nil))
 	go http.ListenAndServe(":8080", nil)
-	//time.Sleep(time.Second*5)
-	//fmt.Println("dd")
 
-	var res bool
-	var err error
-
-	pc_babka := passportControl{personal: female}
-
-	man_t := ticket{departure: "Moscow", arrival: "Iraq"}
-	man_p := passport{firstNAme: "Игорь", birthday: time.Date(1990, 3, 15, 0, 0, 0, 0, time.UTC), sex: male, lastName: "Столов", serialNumber: "ER456853", country: "Russia"}
-	res, err = pc_babka.Check(&man_t, &man_p, nil)
-	log.Printf("Result: %b, error: %s", res, err)
-
-	girl_t := ticket{departure: "Moscow", arrival: "Iraq"}
-	girl_p := passport{firstNAme: "Анна", birthday: time.Date(1990, 3, 15, 0, 0, 0, 0, time.UTC), sex: female, lastName: "Столова", serialNumber: "ER456853", country: "Russia"}
-	res, err = pc_babka.Check(&girl_t, &girl_p, nil)
-	log.Printf("Result: %b, error: %s", res, err)
-
-	res, err = pc_babka.CheckLadyToArabian(&girl_t, &girl_p, true, nil)
-	log.Printf("Result: %b, error: %s", res, err)
+	testServer()
 
 	sec := time.Duration(100)
 	log.Printf("You have %d sec to test API: http://localhost:8080/reg", sec)
 	time.Sleep(time.Second * sec)
 
+}
+func testServer() {
+	man_t := ticket{Departure: "Moscow", Arrival: "Iraq"}
+	man_p := passport{FirstNAme: "Игорь", Birthday: time.Date(1990, 3, 15, 0, 0, 0, 0, time.UTC),
+		Sex: male, LastName: "Столов", SerialNumber: "ER456853", Country: "Russia"}
+
+	extData := extData{ticket: man_t, passport: man_p}
+
+	data, err := json.Marshal(extData)
+	if err != nil {
+		log.Fatal("%s\n", err)
+	}
+
+	r := bytes.NewReader(data)
+	resp, err := http.Post("http://localhost:8080/reg", "application/json", r)
+	if err != nil {
+		log.Fatal("%s\n", err)
+	}
+
+	body, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1048576))
+	if err != nil {
+		log.Fatal("Error: %v", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		log.Fatal("Error: %v", err)
+	}
+	code := string(body)
+	log.Printf("Test registration. Answer from server '%s'", code)
+	t, p, err := getPersonalDataByCode(1)
+	if err != nil {
+		log.Fatal("Error: can't get data by code 1", err)
+	}
+	log.Printf("Take data by code 1:\n\tTicket: %v\n\tPassport: %v\n", t, p)
 }
