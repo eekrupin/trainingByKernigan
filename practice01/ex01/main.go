@@ -12,10 +12,10 @@ import (
 
 var (
 	debug         = flag.Bool("debug", false, "enable debugging")
-	password      = flag.String("password", "", "the database password")
+	password      = flag.String("password", "sa", "the database password")
 	port     *int = flag.Int("port", 1433, "the database port")
-	server        = flag.String("server", "", "the database server")
-	user          = flag.String("user", "", "the database user")
+	server        = flag.String("server", "localhost", "the database server")
+	user          = flag.String("user", "sa", "the database user")
 )
 
 type rowData struct {
@@ -28,6 +28,7 @@ type data struct {
 	item []rowData
 }
 
+//парсим json, складываем в БД
 func main() {
 
 	fileName := os.Args[1:][0]
