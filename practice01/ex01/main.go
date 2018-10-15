@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	_ "github.com/denisenkom/go-mssqldb"
 	"io/ioutil"
 	"os"
 	"time"
@@ -12,25 +13,26 @@ import (
 
 var (
 	debug         = flag.Bool("debug", false, "enable debugging")
-	password      = flag.String("password", "sa", "the database password")
+	password      = flag.String("password", "Sa#1234", "the database password")
 	port     *int = flag.Int("port", 1433, "the database port")
-	server        = flag.String("server", "localhost", "the database server")
+	server        = flag.String("server", "krupin", "the database server")
 	user          = flag.String("user", "sa", "the database user")
 )
 
 type rowData struct {
-	name string
-	age  int
-	date time.Time
+	Name string    `json:ame`
+	Age  int       `json:age`
+	Date time.Time `json:date`
 }
 
 type data struct {
-	item []rowData
+	Items []rowData
 }
 
 //парсим json, складываем в БД
 func main() {
 
+	//.\practice01\ex01\users.json
 	fileName := os.Args[1:][0]
 
 	data := data{}
@@ -46,8 +48,9 @@ func main() {
 	check(err)
 	defer conn.Close()
 
-	for _, item := range data.item {
-		_, err := conn.Exec("INSERT INTO users (name, age, date) VALUES (@1, @2, @3)", item.name, item.age, item.date)
+	for _, item := range data.Items {
+		dateString := item.Date.Format(time.RFC3339)
+		_, err := conn.Exec("INSERT INTO training.dbo.usersPractice01_ex01 (name, age, date) VALUES (?, ?, ?)", item.Name, item.Age, dateString)
 		check(err)
 	}
 
