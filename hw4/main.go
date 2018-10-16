@@ -2,8 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
+	mxj "github.com/clbanning/mxj"
 	_ "github.com/denisenkom/go-mssqldb"
 	"io/ioutil"
 	"log"
@@ -20,13 +22,41 @@ var (
 )
 
 func main() {
+
+	//Скачиваем картинку и записываем в базу
 	URL := "https://cdn.fishki.net/upload/post/2017/03/19/2245758/tn/02-funny-cat-wallpapercat-wallpaper.jpg"
 	id := getAndSaveFile(URL)
 	log.Printf("file id: %d", id)
 
+	//Получаем картинку из базы по id, отображаем имя и размер
 	data := getFile(id)
-	log.Printf("file name: %s", data.fileName)
+	log.Printf("file name: %s, len %d", data.fileName, len(data.body))
 
+	//По url elastic берем JSON, конвертируем в XML, сохраняем в файл examlpe.xml
+	URL_elastic := "http://nginx01.test.lan:9300/menu_index_v7/_search?id=14945"
+	fileName := "examlpe.xml"
+	getJSONAndSaveToXML(URL_elastic, fileName)
+
+}
+
+//По url elastic берем JSON, конвертируем в XML, сохраняем в файл
+func getJSONAndSaveToXML(URL string, fileName string) {
+	resp, err := http.Get(URL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	byteJSON, err := ioutil.ReadAll(resp.Body)
+
+	var obj map[string]interface{}
+	err = json.Unmarshal(byteJSON, &obj)
+	check(err)
+
+	jsonMap, err := mxj.NewMapJson(byteJSON)
+	byteXML, err := jsonMap.Xml()
+	check(err)
+	ioutil.WriteFile(fileName, byteXML, 0644)
 }
 
 func check(e error) {
@@ -68,6 +98,7 @@ func saveToDB(fileName string, body []byte) int {
 	return id
 }
 
+//Получение файла по id
 func getFile(id int) struct {
 	fileName string
 	body     []byte
