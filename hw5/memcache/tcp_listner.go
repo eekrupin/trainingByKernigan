@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"net"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 var cache = &Cache{m: make(map[string]string)}
@@ -100,11 +102,25 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
+func MemControl(sizeKb uint64) {
+	for {
+		memStats := &runtime.MemStats{}
+		runtime.ReadMemStats(memStats)
+		if memStats.Alloc/1024 > sizeKb {
+			panic("Memory critical threshold exceeded")
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
 func main() {
 	listner, err := net.Listen("tcp", ":9999")
 	if err != nil {
 		panic(err)
 	}
+
+	//Ограничение памяти 1000 килобайт
+	go MemControl(1000)
 
 	for {
 		conn, err := listner.Accept()
